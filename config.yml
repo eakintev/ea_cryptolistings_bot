@@ -1,0 +1,6 @@
+exchanges:
+  bittrex : https://bittrex.com/api/v1.1/public/getmarkets
+  upbit : https://api.upbit.com/v1/market/all
+
+data_folder:
+  ./data

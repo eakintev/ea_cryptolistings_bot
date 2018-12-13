@@ -1,7 +1,9 @@
 import argparse
 import os
+import sys
 import yaml
-from utils import ConnectorGet, AdapterGet, Workflow, repeat_on_exception
+from pprint import pprint
+from utils import Workflow
 
 
 def parse_arguments():
@@ -35,16 +37,18 @@ def parse_config(config_path):
         with open(config_path) as f:
             config = yaml.load(f)
     except FileNotFoundError:
-        print('Configuration file not found')
+        print(f'Configuration file not found at {os.path.realpath(config_path)}')
+        sys.exit()
 
     return config
-
 
 if __name__ == '__main__':
     CONFIG_PATH = parse_arguments()
     CONFIG = parse_config(CONFIG_PATH)
-    print(CONFIG)
-    
-    # infinite run for one exchange with default 2 sec sleep
-    bittrex = Workflow('bittrex', CONFIG)
-    bittrex.run()
+    pprint(CONFIG)
+
+    # infinite run, default sleep_time 2 sec
+    # upbit API is slow
+    exchanges = [Workflow(exchange, CONFIG) for exchange in CONFIG['exchanges']]
+    for exchange in exchanges:
+        exchange.start()

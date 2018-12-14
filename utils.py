@@ -127,8 +127,10 @@ class Archiver():
         """
         Appends new listing to json file
         """
-        with open(self.json_path, 'r+') as f:
+        with open(self.json_path) as f:
             data = json.load(f)
+
+        with open(self.json_path, 'w') as f:
             data.append({new_market: ts})
             f.write(json.dumps(data, indent=4))
 
@@ -173,23 +175,24 @@ class Workflow(Thread):
             new_ts = new_parsed_data['timestamp(ms)']
             new_markets = new_parsed_data['markets']
             new_listings = new_markets - self.markets
-            # if new market in API response
-            if new_listings:
-                # send messages here first
-                for listing in new_listings:
-                    msg = self.adapter.get_string(listing, new_ts)
 
-                self.markets = new_markets
-                self.archiver.update_json(new_market, new_ts)
+            # # if new market in API response
+            # proxies = {'https': "socks5://localhost:9150"}  # bypass blocking using Tor for local testing
+            # if new_listings:
+            #     # send messages first
+            #     for listing in new_listings:
+            #         msg = self.adapter.get_string(listing, new_ts)
+            #         print('\n'+msg+'\n')
+            #         for id_ in self.config['telegram_ids']:
+            #             msg_base = f"https://api.telegram.org/bot{self.config['bot_token']}/sendMessage?chat_id={id_}&text="
+            #             requests.post(msg_base+msg, proxies=proxies)
+
+            #     # update json
+            #     for listing in new_listings:
+            #         self.archiver.update_json(listing, new_ts)
+
+            #     self.markets = new_markets
 
             dt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f'{len(new_markets)} markets on {self.exchange}\t {dt}')
-
-            # print(new_markets)
-            # proxies = {'https': "socks5://localhost:9150"}  # bypass blocking using Tor for local testing
-            # for id_ in self.config['telegram_ids']:
-            #     msg_base = f"https://api.telegram.org/bot{self.config['bot_token']}/sendMessage?chat_id={id_}&text="
-            #     msg = self.adapter.get_string(list(new_markets)[0], new_ts)
-            #     requests.post(msg_base+msg, proxies=proxies)
-
             time.sleep(self.sleep_time)

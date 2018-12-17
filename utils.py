@@ -8,7 +8,9 @@ from threading import Thread
 
 
 def repeat_on_exception(func):
-    """Decorator to handle ConnectorGet exceptions."""
+    """
+    Decorator to handle ConnectorGet exceptions.
+    """
     def retry_message(time):
         return f'Sleep for {time} sec and retry'
 
@@ -18,13 +20,24 @@ def repeat_on_exception(func):
                 return func(*args, **kwargs)
             except (requests.exceptions.Timeout,
                     requests.exceptions.ConnectionError) as e:
-                t = 1
+                t = 2
                 print(e, retry_message(t), sep='\n')
                 time.sleep(t)
-            except Exception as e:
+            except requests.RequestException as e:
                 t = 5
                 print(e, retry_message(t), sep='\n')
                 time.sleep(t)
+    return wrapper
+
+
+def threaded(fn):
+    """
+    To use as decorator to make a function call threaded.
+    """
+    def wrapper(*args, **kwargs):
+        thread = Thread(target=fn, args=args, kwargs=kwargs)
+        thread.start()
+        return thread
     return wrapper
 
 
@@ -52,7 +65,6 @@ class ConnectorGet():
         """
         req = requests.get(self.url, headers=self.headers, timeout=self.timeout)
         if req.status_code == 200:
-            # print(req.status_code)
             return {'data': req.json(), 'timestamp(ms)': int(time.time()*1000)}
         else:
             req.raise_for_status()
@@ -67,7 +79,7 @@ class AdapterGet():
         # parsers return set of markets
         self.json_parsers = {
             'bittrex': lambda x: {i['MarketName'] for i in x['data']['result']},
-            'upbit': lambda x: {i['market'] for i in x['data']}
+            'upbit': lambda x: {i['market'] for i in x['data']},
         }
 
     def _convert_ts(self, ts, tz='Europe/Moscow'):
@@ -135,11 +147,33 @@ class Archiver():
             f.write(json.dumps(data, indent=4))
 
 
+class Bot:
+    """
+    Telegram bot
+    """
+    def __init__(self, config, proxies=None):
+        self.config = config
+        self.proxies = proxies
+
+    @threaded
+    @repeat_on_exception
+    def send_message(self, msg, chat_id):
+        msg_base = f"https://api.telegram.org/bot{self.config['bot_token']}/sendMessage?chat_id={chat_id}&text="
+        requests.post(msg_base+msg, proxies=self.proxies, timeout=2)
+
+
 class Workflow(Thread):
     """
     Base Workflow class
     """
-    def __init__(self, exchange, config, sleep_time=2):
+    def __init__(self, exchange, config, bot, sleep_time=2):
+        """
+        Args:
+            exchange (string): name of exchange
+            config (dict): dict with config data
+            bot (Bot class instance): bot instance for message sending
+            sleep_time (int): time between requests
+        """
         Thread.__init__(self)
         self.exchange = exchange
         self.config = config
@@ -151,6 +185,7 @@ class Workflow(Thread):
                                       timeout=1)
         self.adapter = AdapterGet(self.connector)
         self.archiver = Archiver(self.json_path)
+        self.bot = bot
 
         # Run GET request once and save data if json file doesn't exist
         if not os.path.exists(self.json_path):
@@ -162,13 +197,15 @@ class Workflow(Thread):
             json_data = json.load(f)
             self.markets = {k for d in json_data for k in d.keys()}
 
+        # initial message with number of markets
+        msg = f'{len(self.markets)} markets on {self.exchange}'
+        for id_ in self.config['telegram_ids']:
+            handle = self.bot.send_message(msg, id_)
+            handle.join()
+
     def run(self):
         """
         Calling exchange API with given time interval sleep_time
-
-        TODO: bot class
-              sending multithreaded (async?) messages
-              telegram restriction 30 msg/sec to different users
         """
         while True:
             new_parsed_data = self.adapter.parse_data()
@@ -176,22 +213,21 @@ class Workflow(Thread):
             new_markets = new_parsed_data['markets']
             new_listings = new_markets - self.markets
 
-            # # if new market in API response
-            # proxies = {'https': "socks5://localhost:9150"}  # bypass blocking using Tor for local testing
-            # if new_listings:
-            #     # send messages first
-            #     for listing in new_listings:
-            #         msg = self.adapter.get_string(listing, new_ts)
-            #         print('\n'+msg+'\n')
-            #         for id_ in self.config['telegram_ids']:
-            #             msg_base = f"https://api.telegram.org/bot{self.config['bot_token']}/sendMessage?chat_id={id_}&text="
-            #             requests.post(msg_base+msg, proxies=proxies)
+            # if new market in API response
+            if new_listings:
+                # send messages first
+                for listing in new_listings:
+                    msg = self.adapter.get_string(listing, new_ts)
+                    for id_ in self.config['telegram_ids']:
+                        handle = self.bot.send_message(msg, id_)
+                        handle.join()
+                    print('\n' + msg + '\n')
 
-            #     # update json
-            #     for listing in new_listings:
-            #         self.archiver.update_json(listing, new_ts)
+                # update json
+                for listing in new_listings:
+                    self.archiver.update_json(listing, new_ts)
 
-            #     self.markets = new_markets
+                self.markets = new_markets
 
             dt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f'{len(new_markets)} markets on {self.exchange}\t {dt}')

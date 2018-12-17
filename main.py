@@ -3,7 +3,7 @@ import os
 import sys
 import yaml
 from pprint import pprint
-from utils import Workflow
+from utils import Workflow, Bot
 
 
 def parse_arguments():
@@ -42,13 +42,18 @@ def parse_config(config_path):
 
     return config
 
+
 if __name__ == '__main__':
     CONFIG_PATH = parse_arguments()
     CONFIG = parse_config(CONFIG_PATH)
     pprint(CONFIG)
 
+    proxies = None
+    # proxies = {'https': "socks5://localhost:9150"}  # bypass blocking using Tor for local testing
+    bot = Bot(CONFIG, proxies=proxies)
+
     # infinite run, default sleep_time 2 sec
     # upbit API is slow
-    exchanges = [Workflow(exchange, CONFIG) for exchange in CONFIG['exchanges']]
+    exchanges = [Workflow(exchange, CONFIG, bot) for exchange in CONFIG['exchanges']]
     for exchange in exchanges:
         exchange.start()

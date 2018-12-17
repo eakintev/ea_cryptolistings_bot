@@ -1,3 +1,5 @@
 requests==2.21.0
 pyyaml==3.13
 pytz==2018.7
+# pysocks to bypass local telegram blocking
+pysocks==1.6.8

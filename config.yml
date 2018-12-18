@@ -1,6 +1,10 @@
 exchanges:
   bittrex: https://bittrex.com/api/v1.1/public/getmarkets
   upbit: https://api.upbit.com/v1/market/all
+  bithumb: https://api.bithumb.com/public/ticker/ALL
+  kucoin: https://api.kucoin.com/v1/market/open/symbols
+  poloniex: https://poloniex.com/public?command=returnTicker
+  binance: https://api.binance.com/api/v1/exchangeInfo
 
 data_folder:
   ./data

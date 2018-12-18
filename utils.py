@@ -7,6 +7,17 @@ import pytz
 from threading import Thread
 
 
+# JSON_PARSERS return set of markets on exchange
+JSON_PARSERS = {
+    'bittrex': lambda x: {i['MarketName'] for i in x['data']['result']},
+    'upbit': lambda x: {i['market'] for i in x['data']},
+    'bithumb': lambda x: {i for i in x['data']['data'].keys() if i != 'date'},
+    'kucoin': lambda x: {i['symbol'] for i in x['data']['data']},
+    'poloniex': lambda x: set(x['data'].keys()),
+    'binance': lambda x: {i['symbol'] for i in x['data']['symbols']}
+}
+
+
 def repeat_on_exception(func):
     """
     Decorator to handle ConnectorGet exceptions.
@@ -76,11 +87,7 @@ class AdapterGet():
     """
     def __init__(self, connector):
         self.connector = connector
-        # parsers return set of markets
-        self.json_parsers = {
-            'bittrex': lambda x: {i['MarketName'] for i in x['data']['result']},
-            'upbit': lambda x: {i['market'] for i in x['data']},
-        }
+        self.json_parsers = JSON_PARSERS
 
     def _convert_ts(self, ts, tz='Europe/Moscow'):
         """
@@ -182,7 +189,7 @@ class Workflow(Thread):
         self.connector = ConnectorGet(self.exchange,
                                       self.config['exchanges'][self.exchange],
                                       {'Content-Type': 'application/json'},
-                                      timeout=1)
+                                      timeout=2)
         self.adapter = AdapterGet(self.connector)
         self.archiver = Archiver(self.json_path)
         self.bot = bot

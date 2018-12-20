@@ -142,7 +142,7 @@ class Archiver():
         with open(self.json_path, 'w') as f:
             f.write(json.dumps(json_data, indent=4))
 
-    def update_json(self, new_market, ts):
+    def update_json(self, new_listings, ts):
         """
         Appends new listing to json file
         """
@@ -150,7 +150,8 @@ class Archiver():
             data = json.load(f)
 
         with open(self.json_path, 'w') as f:
-            data.append({new_market: ts})
+            for new_listing in new_listings:
+                data.append({new_listing: ts})
             f.write(json.dumps(data, indent=4))
 
 
@@ -211,12 +212,6 @@ class Workflow(Thread):
             json_data = json.load(f)
             self.markets = {k for d in json_data for k in d.keys()}
 
-        # initial message with number of markets
-        msg = f'{len(self.markets)} markets on {self.exchange}'
-        for id_ in self.config['telegram_ids']:
-            handle = self.bot.send_message(msg, id_)
-            handle.join()
-
     def run(self):
         """
         Calling exchange API with given time interval sleep_time
@@ -231,16 +226,15 @@ class Workflow(Thread):
             # if new market in API response
             if new_listings:
                 # send messages first
-                for listing in new_listings:
-                    msg = self.adapter.get_string(listing, new_ts)
-                    for id_ in self.config['telegram_ids']:
-                        handle = self.bot.send_message(msg, id_)
-                        handle.join()
-                    print('\n' + msg + '\n')
+                listings_str = ', '.join(new_listings)
+                msg = self.adapter.get_string(listings_str, new_ts)
+                for id_ in self.config['telegram_ids']:
+                    handle = self.bot.send_message(msg, id_)
+                    handle.join()
+                print('\n' + msg + '\n')
 
                 # update json
-                for listing in new_listings:
-                    self.archiver.update_json(listing, new_ts)
+                self.archiver.update_json(new_listings, new_ts)
 
                 self.markets = new_markets
 

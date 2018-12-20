@@ -57,3 +57,9 @@ if __name__ == '__main__':
     exchanges = [Workflow(exchange, CONFIG, bot) for exchange in CONFIG['exchanges']]
     for exchange in exchanges:
         exchange.start()
+
+    start_msg = 'bot started'
+    print(start_msg)
+    for id_ in CONFIG['telegram_ids']:
+        handle = bot.send_message(start_msg, id_)
+        handle.join()

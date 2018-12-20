@@ -31,7 +31,7 @@ def repeat_on_exception(func):
                 return func(*args, **kwargs)
             except (requests.exceptions.Timeout,
                     requests.exceptions.ConnectionError) as e:
-                t = 2
+                t = 1
                 print(e, retry_message(t), sep='\n')
                 time.sleep(t)
             except requests.RequestException as e:
@@ -173,13 +173,18 @@ class Workflow(Thread):
     """
     Base Workflow class
     """
-    def __init__(self, exchange, config, bot, sleep_time=2):
+    def __init__(self, exchange, config, bot, sleep_time=2, verbose=1):
         """
         Args:
             exchange (string): name of exchange
             config (dict): dict with config data
             bot (Bot class instance): bot instance for message sending
             sleep_time (int): time between requests
+            verbose (int):
+                0 - no output
+                1 - every minute
+                2 - every request
+
         """
         Thread.__init__(self)
         self.exchange = exchange
@@ -193,6 +198,8 @@ class Workflow(Thread):
         self.adapter = AdapterGet(self.connector)
         self.archiver = Archiver(self.json_path)
         self.bot = bot
+        self.verbose = verbose
+        self.start_time = datetime.datetime.now() 
 
         # Run GET request once and save data if json file doesn't exist
         if not os.path.exists(self.json_path):
@@ -214,6 +221,7 @@ class Workflow(Thread):
         """
         Calling exchange API with given time interval sleep_time
         """
+        self.current_minute = self.start_time.minute
         while True:
             new_parsed_data = self.adapter.parse_data()
             new_ts = new_parsed_data['timestamp(ms)']
@@ -236,6 +244,14 @@ class Workflow(Thread):
 
                 self.markets = new_markets
 
-            dt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            print(f'{len(new_markets)} markets on {self.exchange}\t {dt}')
+            if self.verbose:
+                dt = datetime.datetime.now()
+                out_string = f'{len(new_markets)} markets on {self.exchange}\t {dt.strftime("%Y-%m-%d %H:%M:%S")}'
+                if self.verbose == 1:
+                    if dt.minute != self.current_minute:
+                        self.current_minute = dt.minute
+                        print(out_string)
+                if self.verbose == 2:
+                    print(out_string)
+
             time.sleep(self.sleep_time)

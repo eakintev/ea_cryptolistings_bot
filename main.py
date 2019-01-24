@@ -3,7 +3,7 @@ import os
 import sys
 import yaml
 from pprint import pprint
-from utils import Workflow, Bot
+from utils import Workflow, Bot, Cafe_bithumb_checker
 
 
 def parse_arguments():
@@ -58,8 +58,5 @@ if __name__ == '__main__':
     for exchange in exchanges:
         exchange.start()
 
-    start_msg = 'bot started'
-    print(start_msg)
-    for id_ in CONFIG['telegram_ids']:
-        handle = bot.send_message(start_msg, id_)
-        handle.join()
+    cafe_bithumb = Cafe_bithumb_checker(CONFIG, bot)
+    cafe_bithumb.start()

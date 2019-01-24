@@ -6,6 +6,10 @@ exchanges:
   poloniex: https://poloniex.com/public?command=returnTicker
   binance: https://api.binance.com/api/v1/exchangeInfo
 
+# site urls to check for updates
+sites:
+  - 'https://cafe.bithumb.com/boards/43/contents'
+
 data_folder:
   ./data
 

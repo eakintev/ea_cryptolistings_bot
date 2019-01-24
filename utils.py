@@ -52,6 +52,24 @@ def threaded(fn):
     return wrapper
 
 
+def convert_ts(ts, tz='Europe/Moscow'):
+    """
+    Converts UTC timestamp(ms) to date and time in given timezone
+
+    Args:
+        ts (int): timestamp(ms)
+        tz (string): timezone
+
+    Returns:
+        string: date string, e.g. '21:23:59 15.11.2018 MSK'
+    """
+    ts = ts / 1000  # convert ms to s
+    dt_string = (datetime.datetime.fromtimestamp(ts, tz=pytz.utc)
+                                    .astimezone(pytz.timezone(tz))
+                                    .strftime('%H:%M:%S %d.%m.%Y %Z'))
+    return dt_string
+
+
 class ConnectorGet():
     """
     Class for get requests to API
@@ -89,23 +107,6 @@ class AdapterGet():
         self.connector = connector
         self.json_parsers = JSON_PARSERS
 
-    def _convert_ts(self, ts, tz='Europe/Moscow'):
-        """
-        Converts UTC timestamp(ms) to date and time in given timezone
-
-        Args:
-            ts (int): timestamp(ms)
-            tz (string): timezone
-
-        Returns:
-            string: date string, e.g. '21:23:59 15.11.2018 MSK'
-        """
-        ts = ts / 1000  # convert ms to s
-        dt_string = (datetime.datetime.fromtimestamp(ts, tz=pytz.utc)
-                                      .astimezone(pytz.timezone(tz))
-                                      .strftime('%H:%M:%S %d.%m.%Y %Z'))
-        return dt_string
-
     def parse_data(self):
         """
         Parses API json data from Connector
@@ -124,7 +125,8 @@ class AdapterGet():
         """
         Returns message with market and time of listing
         """
-        return f'{market} is now at {self.connector.exchange} \t ({self._convert_ts(ts)})'
+        new_emoji = b'\xF0\x9F\x86\x95'.decode('utf-8')
+        return f'{new_emoji} {market} is now at {self.connector.exchange} \t ({convert_ts(ts)})'
 
 
 class Archiver():
@@ -168,6 +170,77 @@ class Bot:
     def send_message(self, msg, chat_id):
         msg_base = f"https://api.telegram.org/bot{self.config['bot_token']}/sendMessage?chat_id={chat_id}&text="
         requests.post(msg_base+msg, proxies=self.proxies, timeout=2)
+
+
+class Cafe_bithumb_checker(Thread):
+    """
+    Class for checking cafe.bithumb.com for new data.
+    Could be expanded for other sites in future.
+    """
+    def __init__(self, config, bot, time_sleep=60):
+        Thread.__init__(self)
+        self.config = config
+        self.time_sleep = time_sleep
+        self.bot = bot
+        self.notices = {}
+        self.form_data = (
+            'draw=1&columns%5B0%5D%5Bdata%5D=0&columns%5B0%5D%5Bname%5D=&columns%5B0%5D%5Bsearchable%5D=true'
+            '&columns%5B0%5D%5Borderable%5D=false&columns%5B0%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B0%5D%5Bsearch%5D%5Bregex%5D=false'
+            '&columns%5B1%5D%5Bdata%5D=1&columns%5B1%5D%5Bname%5D=&columns%5B1%5D%5Bsearchable%5D=true&columns%5B1%5D%5Borderable%5D=false'
+            '&columns%5B1%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B1%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B2%5D%5Bdata%5D=2'
+            '&columns%5B2%5D%5Bname%5D=&columns%5B2%5D%5Bsearchable%5D=true&columns%5B2%5D%5Borderable%5D=false'
+            '&columns%5B2%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B2%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B3%5D%5Bdata%5D=3'
+            '&columns%5B3%5D%5Bname%5D=&columns%5B3%5D%5Bsearchable%5D=true&columns%5B3%5D%5Borderable%5D=false'
+            '&columns%5B3%5D%5Bsearch%5D%5Bvalue%5D=&columns%5B3%5D%5Bsearch%5D%5Bregex%5D=false&columns%5B4%5D%5Bdata%5D=4'
+            '&columns%5B4%5D%5Bname%5D=&columns%5B4%5D%5Bsearchable%5D=true&columns%5B4%5D%5Borderable%5D=false&columns%5B4%5D%5Bsearch%5D%5Bvalue%5D='
+            '&columns%5B4%5D%5Bsearch%5D%5Bregex%5D=false&start=0&length=10&search%5Bvalue%5D=&search%5Bregex%5D=false'
+        )
+        self.headers = {
+            'accept': 'application/json',
+            'content-length': '1107',
+            'content-type': 'application/x-www-form-urlencoded',
+            'origin': 'https://cafe.bithumb.com',
+            'referer': 'https://cafe.bithumb.com/view/boards/43',
+            'user-agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64)',
+            'x-requested-with': 'XMLHttpRequest',
+        }
+
+    @repeat_on_exception
+    def make_request(self):
+        with requests.Session() as s:
+            url = self.config['sites'][0]
+            p = s.post(self.config['sites'][0], self.form_data, headers=self.headers)
+            data = json.loads(p.text)['data']
+            new_notices = {i[1]: i[2] for i in data}
+            # print(convert_ts(time.time()*1000), p.status_code, len(self.notices), sep='\t')
+        return new_notices
+
+    def run(self):
+        first_request = True
+
+        while True:
+            time_now = time.time() * 1000
+            new_notices = self.make_request()
+            if first_request:
+                self.notices.update(new_notices)
+                for notice in self.notices:
+                    msg = f'New notice on cafe.bithumb.com {self.notices[notice]} {convert_ts(time_now)}'
+                    print(msg)
+                first_request = False
+
+            diff = new_notices.keys() - self.notices.keys()
+            if diff:
+                for notice in diff:
+                    new_emoji = b'\xF0\x9F\x86\x95'.decode('utf-8')
+                    msg = f'{new_emoji} New notice on cafe.bithumb.com\n{new_notices[notice]}\n{convert_ts(time_now)}'
+                    for id_ in self.config['telegram_ids']:
+                        msg_full = f"https://api.telegram.org/bot{self.config['bot_token']}/sendMessage?chat_id={chat_id}&text={msg}"
+                        handle = self.bot.send_message(msg, id_)
+                        handle.join()
+                    print(msg)
+                self.notices.update(new_notices)
+            print('cafe.bithumb', convert_ts(time_now), len(self.notices), sep='\t')
+            time.sleep(self.time_sleep)
 
 
 class Workflow(Thread):
